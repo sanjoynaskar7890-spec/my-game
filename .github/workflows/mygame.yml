@@ -11,11 +11,26 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Build with Buildozer
-      uses: kivy/buildozer-action@v1
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        filename: buildozer.spec
-        release: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git wget curl unzip build-essential \
+          libltdl-dev libffi-dev libssl-dev python3-pip \
+          openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev \
+          libncurses5-dev libncursesw5-dev libtinfo5 cmake cython
+
+    - name: Install Buildozer & Cython
+      run: |
+        pip install --upgrade pip
+        pip install cython buildozer
+
+    - name: Build with Buildozer
+      run: |
+        buildozer -v android debug
         
