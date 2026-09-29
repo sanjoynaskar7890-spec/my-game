@@ -26,3 +26,4 @@ android.permissions = INTERNET
 android.api = 33
 android.minapi = 21
 source.dir = .
+android.accept_sdk_license = True
