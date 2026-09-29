@@ -7,7 +7,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35  # বিল্ড টাইমআউট বাড়িয়ে ৩৫ মিনিট করা হলো যাতে প্রথমবার কম্পাইল হতে পর্যাপ্ত সময় পায়
+    timeout-minutes: 35
 
     steps:
       - name: Checkout Code
@@ -55,9 +55,10 @@ jobs:
           path: |
             .buildozer
             ~/.buildozer
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}-${{ hashFiles('*.py') }}
+          # এখানে ক্যাশের ভার্সন v2 করে দেওয়া হয়েছে যাতে পুরোনো করাপ্টেড ক্যাশ এড়িয়ে ফ্রেশ বিল্ড হয়
+          key: v2-buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-${{ hashFiles('*.py') }}
           restore-keys: |
-            ${{ runner.os }}-buildozer-
+            v2-buildozer-${{ runner.os }}-
 
       - name: Install Buildozer & Cython
         run: |
