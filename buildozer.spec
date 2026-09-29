@@ -10,5 +10,6 @@ requirements = python3,pygame,pyjnius,plyer
 
 orientation = portrait
 fullscreen = 0
-android.permissions = INTERNET
+android.permissions = INTERNET,VIBRATE
+
 android.accept_sdk_license = True
