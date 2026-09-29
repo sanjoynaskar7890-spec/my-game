@@ -39,3 +39,5 @@ android.permissions = INTERNET
 
 # (str) Fullscreen setting
 fullscreen = 1
+
+version = 1.0
