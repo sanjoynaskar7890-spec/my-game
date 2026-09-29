@@ -29,11 +29,9 @@ jobs:
       run: |
         pip install --upgrade pip
         pip install "Cython<3.0" buildozer
-
-    - name: Build with Buildozer
+    - name: Build APK with Buildozer
       run: |
-        buildozer -v android debug
-
+        buildozer --log_level 2 android debug
     - name: Upload to GitHub Release (Permanent Link)
       uses: softprops/action-gh-release@v2
       with:
