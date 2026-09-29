@@ -42,7 +42,7 @@ jobs:
 
     - name: Build APK with Buildozer
       run: |
-        buildozer android debug --log_level=2
+        PYTHONUNBUFFERED=1 buildozer android debug --log_level=1
 
     - name: Upload to GitHub Release (Permanent Link)
       uses: softprops/action-gh-release@v2
