@@ -2,60 +2,83 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main", "master" ]
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
-    permissions:
-      contents: write
+    timeout-minutes: 35  # বিল্ড টাইমআউট বাড়িয়ে ৩৫ মিনিট করা হলো যাতে প্রথমবার কম্পাইল হতে পর্যাপ্ত সময় পায়
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          git wget unzip build-essential \
-          libltdl-dev libffi-dev libssl-dev python3-pip \
-          openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev \
-          libncurses5-dev libncursesw5-dev libtinfo5 cmake
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git \
+            python3-pip \
+            build-essential \
+            libffi-dev \
+            libssl-dev \
+            zlib1g-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libreadline-dev \
+            libsqlite3-dev \
+            libbz2-dev \
+            liblzma-dev \
+            tk-dev \
+            libgdbm-dev \
+            libc6-dev \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            pkg-config \
+            ant \
+            autoconf \
+            libtool \
+            openjdk-17-jdk \
+            unzip \
+            zip
 
-    - name: Cache Buildozer Directories
-      uses: actions/cache@v4
-      with:
-        path: |
-          .buildozer
-          ~/.buildozer
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-
+      - name: Cache Buildozer Directories
+        uses: actions/cache@v4
+        with:
+          path: |
+            .buildozer
+            ~/.buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}-${{ hashFiles('*.py') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
-    - name: Install Buildozer & Cython
-      run: |
-        pip install --upgrade pip
-        pip install "Cython<3.0" buildozer
+      - name: Install Buildozer & Cython
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade cython==0.29.36 buildozer
 
-    - name: Build APK with Buildozer
-      run: |
-        PYTHONUNBUFFERED=1 buildozer android debug --log_level=1
+      - name: Build APK with Buildozer
+        env:
+          PYTHONUNBUFFERED: 1
+        run: |
+          buildozer -v android debug
 
-    - name: Upload to GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: bin/*.apk
-        tag_name: v1.0.${{ github.run_number }}
-        name: "Game Beta v1.0.${{ github.run_number }}"
-        body: "Automatic build from GitHub Actions with unique release tag."
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/*.apk
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Hyper-Shift-Extreme v1.0.${{ github.run_number }}"
+          body: "Automated Android APK build using GitHub Actions and Buildozer."
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
