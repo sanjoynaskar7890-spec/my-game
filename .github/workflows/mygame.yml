@@ -33,4 +33,16 @@ jobs:
     - name: Build with Buildozer
       run: |
         buildozer -v android debug
+
+    - name: Upload to GitHub Release (Permanent Link)
+      uses: softprops/action-gh-release@v2
+      with:
+        files: bin/*.apk
+        tag_name: latest-apk
+        name: "Hyper Shift: Ultra Pro Max - Beta APK"
+        body: "Automatic build for the latest game update. Download link remains permanent!"
+        prerelease: false
+        overwrite: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
