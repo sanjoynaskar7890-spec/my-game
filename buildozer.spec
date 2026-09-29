@@ -25,3 +25,4 @@ android.permissions = INTERNET
 # Supported android API
 android.api = 33
 android.minapi = 21
+source.dir = .
