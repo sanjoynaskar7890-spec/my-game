@@ -9,14 +9,14 @@ package.name = hypershiftextreme
 # (str) Package domain (needed for android packaging)
 package.domain = org.errorgamer
 
-# (list) Source files to include (let it include py and other assets)
+# (list) Source files to include
 source.include_exts = py,png,jpg,kv,atlas
 
 # (str) Application directory relative to the spec file
 source.dir = .
 
 # (list) Application requirements
-requirements = python3,pygame,cython
+requirements = python3,pygame-ce
 
 # (str) Custom icon
 #icon.filename = %(source.dir)s/1000079253.png
@@ -24,10 +24,10 @@ requirements = python3,pygame,cython
 # (str) Supported orientations
 orientation = portrait
 
-# (int) Target Android API, should be as high as possible.
+# (int) Target Android API
 android.api = 33
 
-# (int) Minimum API your APK will support.
+# (int) Minimum API your APK will support
 android.minapi = 21
 
 # (str) Android NDK version to use
