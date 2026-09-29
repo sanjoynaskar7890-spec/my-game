@@ -1,29 +1,41 @@
 [app]
+
+# (str) Title of your application
 title = Hyper Shift
+
+# (str) Package name
 package.name = hypershift
+
+# (str) Package domain (needed for android packaging)
 package.domain = org.errorgamer
 
-# Source files to include (let's include py and assets if any)
+# (list) Source files to include (let it include py and other assets)
 source.include_exts = py,png,jpg,kv,atlas
-source.include_dir = 
 
-# Application versioning
-version = 1.0
+# (str) Application directory relative to the spec file
+source.dir = .
 
-# Requirements (Python, Pygame, Cython)
+# (list) Application requirements
+# Add python and pygame here
 requirements = python3,pygame,cython
 
-# Supported orientations
+# (str) Supported orientations
 orientation = portrait
 
-# Fullscreen setting
-fullscreen = 1
+# (int) Target Android API, should be as high as possible.
+android.api = 33
 
-# Android specific permissions
+# (int) Minimum API your APK will support.
+android.minapi = 21
+
+# (str) Android NDK version to use
+android.ndk = 25b
+
+# (bool) Automatically accept Android SDK license
+android.accept_sdk_license = True
+
+# (list) Permissions
 android.permissions = INTERNET
 
-# Supported android API
-android.api = 33
-android.minapi = 21
-source.dir = .
-android.accept_sdk_license = True
+# (str) Fullscreen setting
+fullscreen = 1
