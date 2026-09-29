@@ -19,7 +19,7 @@ source.dir = .
 requirements = python3,pygame,cython
 
 # (str) Custom icon
-icon.filename = %(source.dir)s/1000079253.png
+#icon.filename = %(source.dir)s/1000079253.png
 
 # (str) Supported orientations
 orientation = portrait
