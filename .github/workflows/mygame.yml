@@ -25,6 +25,16 @@ jobs:
           openjdk-17-jdk autoconf libtool pkg-config zlib1g-dev \
           libncurses5-dev libncursesw5-dev libtinfo5 cmake
 
+    - name: Cache Buildozer Directories
+      uses: actions/cache@v4
+      with:
+        path: |
+          .buildozer
+          ~/.buildozer
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+
     - name: Install Buildozer & Cython
       run: |
         pip install --upgrade pip
