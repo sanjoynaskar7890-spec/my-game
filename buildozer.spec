@@ -1,15 +1,27 @@
 [app]
-title = Hyper Shift: Ultra Pro Max
+title = Hyper Shift
 package.name = hypershift
-package.domain = org.game
-source.dir = .
+package.domain = org.errorgamer
+
+# Source files to include (let's include py and assets if any)
 source.include_exts = py,png,jpg,kv,atlas
-version = 0.1
-requirements = python3,pygame,pyjnius,plyer
+source.include_dir = 
 
+# Application versioning
+version = 1.0
 
+# Requirements (Python, Pygame, Cython)
+requirements = python3,pygame,cython
+
+# Supported orientations
 orientation = portrait
-fullscreen = 0
-android.permissions = INTERNET,VIBRATE
 
-android.accept_sdk_license = True
+# Fullscreen setting
+fullscreen = 1
+
+# Android specific permissions
+android.permissions = INTERNET
+
+# Supported android API
+android.api = 33
+android.minapi = 21
