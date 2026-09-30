@@ -15,7 +15,7 @@ source.include_exts = py,png,jpg,kv,atlas
 # (str) Application directory relative to the spec file
 source.dir = .
 
-# (list) Application requirements - এখানে অতিরিক্ত রেসিপি বাদ দিয়ে শুধু পাইথন এবং পাইগেম রাখা হলো
+# (list) Application requirements
 requirements = python3,pygame
 
 # (str) Custom icon
@@ -25,13 +25,13 @@ requirements = python3,pygame
 orientation = portrait
 
 # (int) Target Android API
-android.api = 33
+android.api = 31
 
 # (int) Minimum API your APK will support
 android.minapi = 21
 
 # (str) Android NDK version to use
-android.ndk = 25b
+android.ndk = 23b
 
 # (bool) Automatically accept Android SDK license
 android.accept_sdk_license = True
@@ -44,3 +44,6 @@ android.permissions = INTERNET
 
 # (str) Fullscreen setting
 fullscreen = 1
+
+# (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
+log_level = 2
