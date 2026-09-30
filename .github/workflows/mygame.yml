@@ -13,11 +13,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # পাইথনের ভার্সন ৩.৯ ফিক্স করা হলো কারণ এটি বিল্ডোজার এবং p4a টুলচেইনের সাথে সবচেয়ে বেশি স্টেবল
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Install Dependencies
         run: |
@@ -46,7 +51,6 @@ jobs:
             ant \
             autoconf \
             libtool \
-            openjdk-17-jdk \
             unzip \
             zip
 
