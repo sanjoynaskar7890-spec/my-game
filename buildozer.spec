@@ -16,7 +16,7 @@ source.include_exts = py,png,jpg,kv,atlas
 source.dir = .
 
 # (list) Application requirements
-requirements = python3,pygame
+requirements = python3==3.10.14,pygame
 
 # (str) Custom icon
 #icon.filename = %(source.dir)s/1000079253.png
