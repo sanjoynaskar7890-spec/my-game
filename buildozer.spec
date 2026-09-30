@@ -26,10 +26,10 @@ requirements = python3==3.10.14,hostpython3==3.10.14,pygame
 orientation = portrait
 
 # (int) Target Android API
-android.api = 31
+android.api = 34
 
 # (int) Minimum API your APK will support
-android.minapi = 21
+android.minapi = 24
 
 # (str) Android NDK version to use
 android.ndk = 25b
