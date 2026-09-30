@@ -1,372 +1,401 @@
-import pygame
-import math
-import random
-import struct
+import pygame, math, random, struct, sys, io, wave, os
 
-# --- Pygame Initialization ---
-pygame.mixer.pre_init(44100, -16, 1, 512)
-pygame.init()
+# --- Safe Initialization (Autoback / ANR Fix) ---
+pygame.init(); pygame.font.init()
+try:
+    pygame.mixer.init(11025, -16, 1, 512)
+    AUDIO_READY = True
+except Exception: AUDIO_READY = False
+
 WIDTH, HEIGHT = 400, 600
-# Fullscreen & Scaled for Android devices
-screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
+try: screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.SCALED | pygame.FULLSCREEN)
+except Exception: screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Hyper Shift: Ultra Pro Max")
 clock = pygame.time.Clock()
 
-# --- Colors ---
-SKY_DAY_TOP = (56, 189, 248)
-SKY_DAY_BOT = (224, 242, 254)
-SKY_SUNSET_TOP = (249, 115, 22)
-SKY_SUNSET_BOT = (253, 224, 71)
-SKY_NIGHT_TOP = (15, 23, 42)
-SKY_NIGHT_BOT = (30, 27, 75)
-GROUND_TOP = (34, 197, 94)
-GROUND_BOT = (120, 53, 15)
-WHITE = (255, 255, 255)
-RED = (239, 68, 68)
-GOLD = (250, 204, 21)
+SKY_DAY, SKY_NIGHT = (56,189,248), (15,23,42)
+SKY_SUN_T, SKY_SUN_B = (249, 115, 22), (253, 224, 71)
+GR_T, GR_B = (34,197,94), (120,53,15)
+WHITE, RED, GOLD = (255,255,255), (239,68,68), (250,204,21)
 
-# --- Standalone Sound Generator ---
-def create_sound(freq, duration, vol=1.0, type='sine'):
-    sample_rate = 44100
-    n_samples = int(sample_rate * duration)
-    buf = bytearray()
-    for i in range(n_samples):
-        t = i / sample_rate
-        if type == 'sine': val = math.sin(2 * math.pi * freq * t)
-        elif type == 'square': val = 1.0 if math.sin(2 * math.pi * freq * t) > 0 else -1.0
-        elif type == 'sawtooth': val = 2.0 * (t * freq - math.floor(0.5 + t * freq))
-        else: val = random.uniform(-1, 1)
-        
-        env = 1.0
-        if i < 500: env = i / 500.0
-        elif i > n_samples - 500: env = (n_samples - i) / 500.0
-        
-        sample = int(val * env * vol * 32767.0)
-        sample = max(-32768, min(32767, sample))
-        buf += struct.pack('<h', sample)
-    return pygame.mixer.Sound(buffer=buf)
+# --- Permanent Highscore System ---
+high_score = 0
+hs_file = "hyper_shift_hs.txt"
+if os.path.exists(hs_file):
+    try:
+        with open(hs_file, "r") as f: high_score = int(f.read())
+    except: pass
 
-SND_JUMP_BIRD = create_sound(450, 0.15, 0.8, 'sine')
-SND_JUMP_DINO = create_sound(200, 0.2, 1.0, 'square')
-SND_SHIELD = create_sound(600, 0.4, 0.8, 'sine')
+def save_hs(score):
+    try:
+        with open(hs_file, "w") as f: f.write(str(score))
+    except: pass
+
+# --- CPU Safe Gradient Cache ---
+grad_cache = {}
+def draw_grad(tc, bc, y, h):
+    h = int(h)
+    if h <= 0: return
+    key = (tc, bc, h)
+    if key not in grad_cache:
+        surf = pygame.Surface((WIDTH, h))
+        for i in range(h):
+            r = i / h; c = (int(tc[0]*(1-r)+bc[0]*r), int(tc[1]*(1-r)+bc[1]*r), int(tc[2]*(1-r)+bc[2]*r))
+            pygame.draw.line(surf, c, (0, i), (WIDTH, i))
+        grad_cache[key] = surf
+    screen.blit(grad_cache[key], (0, int(y)))
+
+# --- Lightning Fast Audio Engine ---
+def create_sound(freq, dur, vol=1.0, typ='sine'):
+    if not AUDIO_READY: return None
+    try:
+        sr = 11025; ns = int(sr * dur); wav_io = io.BytesIO()
+        with wave.open(wav_io, 'wb') as wf:
+            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sr)
+            buf = bytearray()
+            for i in range(ns):
+                t = i / sr
+                if typ == 'sine': v = math.sin(2 * math.pi * freq * t)
+                elif typ == 'square': v = 1.0 if math.sin(2 * math.pi * freq * t) > 0 else -1.0
+                else: v = 2.0 * (t * freq - math.floor(0.5 + t * freq))
+                env = (i/200) if i<200 else ((ns-i)/200 if i>ns-200 else 1.0)
+                samp = max(-32768, min(32767, int(v * env * vol * 32767.0)))
+                buf += struct.pack('<h', samp)
+            wf.writeframesraw(buf)
+        wav_io.seek(0); return pygame.mixer.Sound(wav_io)
+    except Exception: return None
+
+SND_JUMP_B = create_sound(450, 0.15, 0.8, 'sine')
+SND_JUMP_D = create_sound(220, 0.18, 1.0, 'square')
+SND_COIN = create_sound(1200, 0.1, 0.7, 'sine')
 SND_BREAK = create_sound(150, 0.3, 1.0, 'sawtooth')
-SND_ROAR = create_sound(100, 1.5, 1.0, 'sawtooth')
-SND_COIN = create_sound(800, 0.1, 0.7, 'sine')
+SND_ROAR = create_sound(100, 0.8, 1.0, 'sawtooth') 
 SND_MODE = create_sound(300, 0.5, 0.9, 'sawtooth')
+SND_THUNDER = create_sound(80, 0.6, 1.0, 'sawtooth')
+SND_BEEP = create_sound(600, 0.15, 0.8, 'sine')
+SND_GO = create_sound(1000, 0.3, 1.0, 'square')
 
-# --- Game Variables ---
-state = "WAIT" # WAIT -> CUTSCENE -> PLAYING -> GAMEOVER
-state_timer = 0
-score = 0
-coins = 0
-frames = 0
+def play_sound(snd):
+    if snd and AUDIO_READY:
+        try: snd.play()
+        except Exception: pass
 
-hero_y = 200
-velocity = 0
-mode = "FLAPPY"
-shield_timer = 0
-shield_hp = 0
-next_shield_at = 5
+try:
+    font_lg = pygame.font.Font(None, 48)
+    font_md = pygame.font.Font(None, 32)
+    font_sm = pygame.font.Font(None, 24)
+except Exception: font_lg = font_md = font_sm = None
 
-base_speed = 4.0
-current_speed = 4.0
-pipe_gap = 160
-spawn_rate = 100
-is_nightmare = False
-is_ultra = False
-bg_scroll = 0
+def draw_text_outline(t, f, c, x, y):
+    if f:
+        screen.blit(f.render(t, True, (0,0,0)), (int(x)-1, int(y)-1))
+        screen.blit(f.render(t, True, (0,0,0)), (int(x)+1, int(y)+1))
+        screen.blit(f.render(t, True, c), (int(x), int(y)))
 
-current_event = "NONE"
-event_timer = 0
-obstacles = []
-items = []
+def draw_logo(x, y, sc):
+    x, y = int(x), int(y)
+    pygame.draw.circle(screen, (234,88,12), (x,y), int(50*sc))
+    pygame.draw.circle(screen, GOLD, (x, y+int(10*sc)), int(35*sc))
+    pygame.draw.polygon(screen, GOLD, [(x-int(25*sc), y-int(20*sc)), (x-int(45*sc), y-int(40*sc)), (x-int(10*sc), y-int(30*sc))])
+    pygame.draw.polygon(screen, GOLD, [(x+int(25*sc), y-int(20*sc)), (x+int(45*sc), y-int(40*sc)), (x+int(10*sc), y-int(30*sc))])
+    pygame.draw.circle(screen, WHITE, (x-int(12*sc), y), int(8*sc)); pygame.draw.circle(screen, WHITE, (x+int(12*sc), y), int(8*sc))
+    pygame.draw.circle(screen, (0,0,0), (x-int(12*sc), y), int(3*sc)); pygame.draw.circle(screen, (0,0,0), (x+int(12*sc), y), int(3*sc))
+    pygame.draw.polygon(screen, (0,0,0), [(x-int(8*sc), y+int(15*sc)), (x+int(8*sc), y+int(15*sc)), (x, y+int(25*sc))])
 
-# --- Drawing Helpers ---
-def draw_gradient(surface, top_color, bot_color, y_start, height):
-    for i in range(height):
-        ratio = i / height
-        r = int(top_color[0] * (1 - ratio) + bot_color[0] * ratio)
-        g = int(top_color[1] * (1 - ratio) + bot_color[1] * ratio)
-        b = int(top_color[2] * (1 - ratio) + bot_color[2] * ratio)
-        pygame.draw.line(surface, (r,g,b), (0, y_start + i), (WIDTH, y_start + i))
+def draw_bird(x, y, fo):
+    x, y, fo = int(x), int(y), int(fo)
+    pygame.draw.polygon(screen, (234,88,12), [(x-20,y), (x-35,y-12), (x-35,y+12)])
+    pygame.draw.circle(screen, GOLD, (x,y), 20)
+    pygame.draw.ellipse(screen, WHITE, (x-10, y+fo-8, 20, 14))
+    pygame.draw.polygon(screen, (249,115,22), [(x+18,y-5), (x+32,y), (x+18,y+5)])
+    pygame.draw.circle(screen, WHITE, (x+10,y-8), 6); pygame.draw.circle(screen, (0,0,0), (x+12,y-8), 2)
 
-def draw_lion_logo(x, y, scale=1.0):
-    pygame.draw.circle(screen, (234, 88, 12), (x, y), int(50*scale))
-    pygame.draw.polygon(screen, (250, 204, 21), [(x-30*scale, y-20*scale), (x+30*scale, y-20*scale), (x, y+35*scale)])
-    pygame.draw.circle(screen, WHITE, (x-12*scale, y-5*scale), int(6*scale))
-    pygame.draw.circle(screen, WHITE, (x+12*scale, y-5*scale), int(6*scale))
-    pygame.draw.polygon(screen, (0,0,0), [(x-10*scale, y+10*scale), (x+10*scale, y+10*scale), (x, y+20*scale)])
+def draw_dino(x, y, ro):
+    x, y, ro = int(x), int(y), int(ro)
+    pygame.draw.polygon(screen, (34,197,94), [(x-10,y+5), (x-25,y-10), (x-10,y-5)])
+    pygame.draw.rect(screen, (34,197,94), (x-12, y-15, 24, 28))
+    for i in range(3): pygame.draw.polygon(screen, (132,204,22), [(x-10+i*9, y-12), (x-6+i*9, y-20), (x-2+i*9, y-12)])
+    pygame.draw.rect(screen, (34,197,94), (x+10, y-24, 26, 20)); pygame.draw.rect(screen, (34,197,94), (x+24, y-16, 14, 10))
+    pygame.draw.circle(screen, WHITE, (x+26, y-18), 5); pygame.draw.circle(screen, (0, 0, 0), (x+28, y-18), 2)
+    pygame.draw.rect(screen, (20,83,45), (x+8, y-5, 8, 4)); pygame.draw.rect(screen, (20,83,45), (x-6, y+13+ro, 6, 12))
+    pygame.draw.rect(screen, (20,83,45), (x+6, y+13-ro, 6, 12))
 
-def draw_bird(x, y, flap_offset):
-    pygame.draw.polygon(screen, (234, 88, 12), [(x-15, y), (x-25, y-10), (x-25, y+10)])
-    pygame.draw.circle(screen, GOLD, (x, y), 16)
-    pygame.draw.circle(screen, (202, 138, 4), (x, y), 16, 2)
-    wing_y = y + flap_offset
-    pygame.draw.ellipse(screen, WHITE, (x-5, wing_y-6, 16, 10))
-    pygame.draw.polygon(screen, (249, 115, 22), [(x+14, y-4), (x+26, y), (x+14, y+4)])
-    pygame.draw.circle(screen, WHITE, (x+8, y-6), 5)
-    pygame.draw.circle(screen, (0,0,0), (x+9, y-6), 2)
-
-def draw_dino(x, y, run_offset):
-    pygame.draw.rect(screen, (21, 128, 61), (x-15, y-10, 30, 24), border_radius=6)
-    pygame.draw.polygon(screen, (22, 163, 74), [(x-15, y-5), (x-30, y-10), (x-15, y+10)])
-    for i in range(3): pygame.draw.polygon(screen, (132, 204, 22), [(x-10+i*8, y-10), (x-6+i*8, y-16), (x-2+i*8, y-10)])
-    pygame.draw.rect(screen, (22, 163, 74), (x+10, y-20, 24, 18), border_radius=4)
-    pygame.draw.circle(screen, RED, (x+24, y-14), 3)
-    pygame.draw.rect(screen, (20, 83, 45), (x+10, y-2, 20, 8))
-    pygame.draw.rect(screen, (20, 83, 45), (x-10, y+14 + run_offset, 6, 12))
-    pygame.draw.rect(screen, (20, 83, 45), (x+5, y+14 - run_offset, 6, 12))
-
-# --- Setup Game ---
-font_large = pygame.font.SysFont(None, 48)
-font_med = pygame.font.SysFont(None, 32)
-font_small = pygame.font.SysFont(None, 24)
+score, coins, frames, state, state_t = 0, 0, 0, "WAIT", 0
+hero_y, vel, mode = 200, 0, "FLAPPY"
+speed, gap, spawn_rate = 4.0, 160, 110
+shield, hp, nxt_sh, pipes_spawned = 0, 0, 5, 0
+obs, items, smoke, coin_parts, evt, event_t = [], [], [], [], "NONE", 0
+msg, msg_t, lightning_t = "", 0, 0
 
 def reset_game():
-    global score, coins, frames, current_speed, pipe_gap, spawn_rate, is_ultra, is_nightmare, mode
-    global hero_y, velocity, shield_timer, shield_hp, next_shield_at, current_event, event_timer, obstacles, items
-    score, coins, frames = 0, 0, 0
-    current_speed, pipe_gap, spawn_rate = 4.0, 160, 100
-    is_ultra, is_nightmare = False, False
-    mode = "FLAPPY"
-    hero_y, velocity = 200, 0
-    shield_timer, shield_hp, next_shield_at = 0, 0, 5
-    current_event, event_timer = "NONE", 0
-    obstacles.clear()
-    items.clear()
+    global score, coins, frames, speed, mode, hero_y, vel, shield, hp, nxt_sh, evt, event_t, msg_t, state_t, pipes_spawned, lightning_t
+    score, coins, frames, speed, mode, pipes_spawned = 0, 0, 0, 4.0, "FLAPPY", 0
+    hero_y, vel, shield, hp, nxt_sh, evt, event_t, lightning_t = 200, 0, 0, 0, 5, "NONE", 0, 0
+    obs.clear(); items.clear(); smoke.clear(); coin_parts.clear(); msg_t, state_t = 0, 0
 
-def spawn_obstacle():
-    global next_shield_at
-    spawn_shield = False
-    if score >= next_shield_at - 1:
-        spawn_shield = True
-        next_shield_at += 5
+def spawn():
+    global nxt_sh, pipes_spawned
+    pipes_spawned += 1
+    sh = False
+    if score >= nxt_sh - 1: sh = True; nxt_sh += 5
+    ox = WIDTH + random.randint(20, 50)
     
-    obs_x = WIDTH + 20
-    if current_event == "COINRUSH":
-        wave_y = random.randint(150, 350)
-        for c in range(3):
-            items.append({"type": "COIN", "x": obs_x + c*40, "y": wave_y})
+    is_red = (pipes_spawned % 4 == 0)
+
+    if evt == "COINRUSH":
+        wy = random.randint(340, 400) if mode == "DINO" else random.randint(160, 320)
+        for c in range(4): items.append({"t": "COIN", "x": ox + c*40, "y": wy + random.randint(-10, 10)})
         return
 
-    obs = {"x": obs_x, "passed": False, "move_dir": 1, "type": mode}
+    ob = {"x": ox, "p": False, "t": mode, "red": is_red}
     if mode == "FLAPPY":
-        obs["topH"] = random.randint(40, 500 - pipe_gap - 40)
-        obs["gap"] = pipe_gap
-        if spawn_shield: items.append({"type": "SHIELD", "x": obs_x + 15, "y": obs["topH"] + pipe_gap//2})
-        elif random.random() < 0.4: items.append({"type": "COIN", "x": obs_x + 15, "y": obs["topH"] + pipe_gap//2})
+        ob["g"] = gap
+        if is_red:
+            ob["th"] = random.randint(90, 500 - gap - 90)
+            ob["dir"] = 1 if random.random() > 0.5 else -1
+            ob["my"] = random.uniform(1.5, 2.5) 
+        else:
+            ob["th"] = random.randint(50, 500 - gap - 50)
+            
+        if sh: items.append({"t": "SHIELD", "x": ox+25, "y": ob["th"] + gap//2})
+        elif random.random() < 0.4: items.append({"t": "COIN", "x": ox+25, "y": ob["th"] + gap//2})
     else:
-        obs["isPtero"] = random.random() < 0.45
-        if spawn_shield: items.append({"type": "SHIELD", "x": obs_x + 15, "y": 300 if obs["isPtero"] else 400})
-        elif random.random() < 0.4: items.append({"type": "COIN", "x": obs_x + 15, "y": 300 if obs["isPtero"] else 400})
-    obstacles.append(obs)
+        ob["pt"] = True if is_red else random.random() < 0.4
+        if is_red:
+            ob["y_pos"] = random.randint(330, 410)
+            ob["dir"] = 1 if random.random() > 0.5 else -1
+            ob["my"] = random.uniform(1.5, 2.5)
 
-# --- Main Game Loop ---
+        if sh: items.append({"t": "SHIELD", "x": ox+20, "y": 380})
+        elif random.random() < 0.5: items.append({"t": "COIN", "x": ox+20, "y": 380})
+    obs.append(ob)
 running = True
 while running:
-    tap_detected = False
+    tap, act_pos = False, None
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.MOUSEBUTTONDOWN or (event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE):
-            tap_detected = True
+        if event.type == pygame.QUIT: running = False
+        if event.type == pygame.MOUSEBUTTONDOWN: tap, act_pos = True, event.pos
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE: tap = True
 
     if state == "WAIT":
-        draw_gradient(screen, (185, 28, 28), (69, 10, 10), 0, HEIGHT)
-        state_timer += 1
-        y_float = math.sin(state_timer * 0.1) * 8
-        draw_lion_logo(WIDTH//2, HEIGHT//2 - 50 + y_float, 1.2)
-        txt = font_large.render("ERRORGAMER", True, WHITE)
-        screen.blit(txt, (WIDTH//2 - txt.get_width()//2, HEIGHT//2 + 50))
-        
-        if (state_timer // 20) % 2 == 0:
-            blink = font_med.render("TAP TO BEGIN", True, GOLD)
-            screen.blit(blink, (WIDTH//2 - blink.get_width()//2, HEIGHT - 100))
-        
-        if tap_detected:
-            state = "CUTSCENE"
-            state_timer = 0
-            SND_ROAR.play()
-            
+        draw_grad((185,28,28), (69,10,10), 0, HEIGHT)
+        state_t += 1
+        draw_logo(WIDTH//2, HEIGHT//2-50 + math.sin(state_t*0.1)*8, 1.2)
+        draw_text_outline("ERROR GAMER", font_lg, WHITE, WIDTH//2-110, HEIGHT//2+40)
+        if (state_t//20)%2==0: draw_text_outline("TAP TO BEGIN", font_md, GOLD, WIDTH//2-80, HEIGHT-100)
+        if tap: state = "CUTSCENE"; state_t = 0; play_sound(SND_ROAR)
+
     elif state == "CUTSCENE":
-        screen.fill((0,0,0))
-        state_timer += 1
-        pygame.draw.circle(screen, RED, (WIDTH//2, int(HEIGHT*0.3)), 80)
-        draw_dino(WIDTH//2, int(HEIGHT*0.7), math.sin(state_timer * 0.3) * 5)
-        pygame.draw.rect(screen, (0,0,0), (0,0,WIDTH, 80))
-        pygame.draw.rect(screen, (0,0,0), (0,HEIGHT-80,WIDTH, 80))
+        state_t += 1
+        draw_grad(SKY_SUN_T, SKY_SUN_B, 0, HEIGHT*0.7)
+        pygame.draw.circle(screen, (253, 224, 71), (WIDTH//2, int(HEIGHT*0.4)), 60)
+        pygame.draw.polygon(screen, (22, 163, 74), [(0, int(HEIGHT*0.7)), (120, int(HEIGHT*0.45)), (250, int(HEIGHT*0.7))])
+        pygame.draw.polygon(screen, (20, 83, 45), [(150, int(HEIGHT*0.7)), (320, int(HEIGHT*0.35)), (WIDTH, int(HEIGHT*0.7))])
+        draw_grad(GR_T, GR_B, HEIGHT*0.7, HEIGHT*0.3)
         
-        if state_timer > 120:
-            reset_game()
-            state = "PLAYING"
-            
-    elif state == "PLAYING" or state == "GAMEOVER":
-        frames += 1
+        anim_x = WIDTH//2 - 150 + int((min(state_t, 120)/120)*150)
+        draw_dino(anim_x, HEIGHT*0.7 - 25, math.sin(state_t * 0.4) * 6)
+        draw_bird(anim_x + 40, HEIGHT*0.7 - 120, math.sin(state_t * 0.5) * 6)
         
+        pygame.draw.rect(screen, (0,0,0), (0,0,WIDTH, 80)); pygame.draw.rect(screen, (0,0,0), (0,HEIGHT-80,WIDTH, 80))
+        
+        if state_t < 120: 
+            draw_text_outline("GET READY...", font_lg, WHITE, WIDTH//2-100, HEIGHT*0.2)
+        elif state_t < 180: 
+            if state_t == 120: play_sound(SND_BEEP)
+            draw_text_outline("3", font_lg, RED, WIDTH//2-10, HEIGHT*0.2)
+        elif state_t < 240: 
+            if state_t == 180: play_sound(SND_BEEP)
+            draw_text_outline("2", font_lg, GOLD, WIDTH//2-10, HEIGHT*0.2)
+        elif state_t < 300: 
+            if state_t == 240: play_sound(SND_BEEP)
+            draw_text_outline("1", font_lg, (34, 197, 94), WIDTH//2-10, HEIGHT*0.2)
+        elif state_t < 360: 
+            if state_t == 300: play_sound(SND_GO)
+            draw_text_outline("GO!", font_lg, WHITE, WIDTH//2-30, HEIGHT*0.2)
+        else: state = "PLAYING"
+
+    elif state in ["PLAYING", "PAUSE", "GAMEOVER"]:
         if state == "PLAYING":
-            if score >= 50:
-                if not is_ultra: is_ultra = True; SND_MODE.play()
-                current_speed = 7.5 + (score - 50) * 0.06; pipe_gap = 120; spawn_rate = 60
-            elif score >= 25:
-                if not is_nightmare: is_nightmare = True; SND_MODE.play()
-                current_speed = 5.5 + (score - 25) * 0.04; pipe_gap = 135; spawn_rate = 80
-            else:
-                current_speed = 4.0 + (score * 0.04)
-
-            if score > 4 and score % 10 == 0 and event_timer <= 0:
-                r = random.random()
-                current_event = "WIND" if r < 0.33 else ("STORM" if r < 0.66 else "COINRUSH")
-                event_timer = 350
-            if event_timer > 0:
-                event_timer -= 1
-                if event_timer <= 0: current_event = "NONE"
-
-            if frames % spawn_rate == 0: spawn_obstacle()
-
-            if tap_detected:
-                if mode == "FLAPPY":
-                    velocity = -6.0 if current_event == "WIND" else -7.5
-                    SND_JUMP_BIRD.play()
-                else:
-                    if hero_y >= 500 - 24:
-                        velocity = -15.5
-                        SND_JUMP_DINO.play()
-
-            grav = 0.48 if current_event == "WIND" else 0.42
-            if mode == "DINO": grav = 0.88
+            frames += 1
+            level = (score // 5)
+            speed = min(8.5, 4.0 + (level * 0.4))
             
-            velocity += grav
-            hero_y += velocity
+            if score > 0 and score % 8 == 0 and event_t <= 0:
+                rc = random.random()
+                evt = "WIND" if rc < 0.25 else ("STORM" if rc < 0.5 else ("COINRUSH" if rc < 0.75 else "LOW_GRAV"))
+                event_t = 300; play_sound(SND_MODE)
+            if event_t > 0:
+                event_t -= 1
+                if event_t <= 0: evt = "NONE"
+            if frames % max(10, int(spawn_rate*(4.0/speed))) == 0: spawn()
+
+            if tap:
+                if act_pos and act_pos[0] > WIDTH-60 and act_pos[1] < 60: state = "PAUSE"
+                else:
+                    if mode == "FLAPPY":
+                        vel = -5.5 if evt=="WIND" else (-9.0 if evt=="LOW_GRAV" else -8.0); play_sound(SND_JUMP_B)
+                    else:
+                        if hero_y >= 500-25: vel = -16.5 if evt=="LOW_GRAV" else -18.5; play_sound(SND_JUMP_D)
+
+            grav = 0.6 if evt=="WIND" else (0.3 if evt=="LOW_GRAV" else (0.5 if mode=="FLAPPY" else 1.2))
+            vel += grav; hero_y += vel
 
             if mode == "FLAPPY":
-                if hero_y >= 500 - 16:
-                    if shield_hp > 0:
-                        shield_hp -= 1; shield_timer = 0; velocity = -8; SND_BREAK.play()
-                    else: state = "GAMEOVER"
-                if hero_y <= 0: hero_y = 0; velocity = 0
+                if hero_y >= 500-20:
+                    if hp > 0: hp-=1; shield=0; vel=-8; play_sound(SND_BREAK)
+                    else: 
+                        state = "GAMEOVER"; play_sound(SND_BREAK)
+                        if score > high_score: high_score = score; save_hs(high_score)
+                if hero_y <= 0: hero_y=0; vel=0
             else:
-                if hero_y >= 500 - 24: hero_y = 500 - 24; velocity = 0
-                
-            if shield_timer > 0:
-                shield_timer -= 1
-                if shield_timer <= 0: shield_hp = 0
+                if hero_y >= 500-25: hero_y = 500-25; vel=0
+            if shield > 0: shield -= 1; hp = 0 if shield <= 0 else hp
 
-            bg_scroll -= current_speed * 0.3
-
-        # Environment Drawing
-        day_cycle = score % 30
-        if current_event == "STORM": draw_gradient(screen, SKY_NIGHT_TOP, SKY_NIGHT_BOT, 0, 500)
-        else:
-            if day_cycle < 10: draw_gradient(screen, SKY_DAY_TOP, SKY_DAY_BOT, 0, 500)
-            elif day_cycle < 20: draw_gradient(screen, SKY_SUNSET_TOP, SKY_SUNSET_BOT, 0, 500)
-            else: draw_gradient(screen, SKY_NIGHT_TOP, SKY_NIGHT_BOT, 0, 500)
+        if state == "PLAYING" and frames % 2 == 0:
+            smoke.append({"x": 60-15 if mode=="DINO" else 60-25, "y": int(hero_y)+10, "s": random.randint(6,12), "a": 180})
         
-        draw_gradient(screen, GROUND_TOP, GROUND_BOT, 500, HEIGHT - 500)
+        for sp in smoke[:]:
+            sp["x"] -= speed*0.8; sp["s"] += 0.4; sp["a"] -= 12
+            if sp["a"] <= 0: smoke.remove(sp)
+            
+        for cp in coin_parts[:]:
+            cp["x"] += cp["vx"]; cp["y"] += cp["vy"]; cp["life"] -= 1
+            if cp["life"] <= 0: coin_parts.remove(cp)
 
-        # Draw Items
-        if state == "PLAYING":
-            hx, hw, hy, hh = 60, 30, hero_y, 30
-            for it in reversed(items):
-                it["x"] -= current_speed
-                if hx+hw > it["x"] and hx < it["x"]+20 and hy+hh > it["y"] and hy < it["y"]+20:
-                    if it["type"] == "SHIELD": shield_timer = 5 * 60; shield_hp = 1; SND_SHIELD.play()
-                    elif it["type"] == "COIN": coins += 1; SND_COIN.play()
-                    items.remove(it); continue
-                if it["x"] < -30: items.remove(it); continue
+        bg = (10,10,30) if evt=="STORM" else (SKY_DAY if score%30<15 else SKY_NIGHT)
+        draw_grad(bg, (224,242,254) if bg==SKY_DAY else (30,27,75), 0, 500)
+        draw_grad(GR_T, GR_B, 500, 100)
+        
+        if lightning_t > 0:
+            lightning_t -= 1
+            if lightning_t % 4 > 1: draw_grad(WHITE, WHITE, 0, 600)
+
+        for sp in smoke:
+            c_val = max(100, min(255, int(sp["a"])))
+            pygame.draw.circle(screen, (c_val, c_val, c_val), (int(sp["x"]), int(sp["y"])), int(sp["s"]))
+
+        if evt == "WIND":
+            for i in range(8): pygame.draw.line(screen, WHITE, (int((frames*18+i*70)%WIDTH), int(80+i*55)), (int((frames*18+i*70)%WIDTH)+50, int(80+i*55)), 2)
+        elif evt == "STORM":
+            for i in range(12): pygame.draw.line(screen, (170,210,255), (int((frames*25+i*50)%WIDTH), int((frames*35+i*40)%450)), (int((frames*25+i*50)%WIDTH)-8, int((frames*35+i*40)%450)+20), 2)
+
+        hx, hw, hy, hh = 60, 40, hero_y, 40 if mode=="FLAPPY" else 50
+        h_rect = pygame.Rect(hx-20, int(hy-20), hw, hh)
+
+        for it in reversed(items):
+            it["x"] -= speed
+            i_rect = pygame.Rect(int(it["x"])-12, int(it["y"])-12, 24, 24)
+            if h_rect.colliderect(i_rect):
+                if it["t"] == "SHIELD": shield = 300; hp = 1; play_sound(SND_COIN)
+                elif it["t"] == "COIN": 
+                    coins += 1; play_sound(SND_COIN)
+                    for _ in range(8): coin_parts.append({"x": it["x"], "y": it["y"], "vx": random.uniform(-3,3), "vy": random.uniform(-3,3), "life": 20})
+                items.remove(it); continue
+            if it["x"] < -30: items.remove(it); continue
+            pygame.draw.circle(screen, (56,189,248) if it["t"]=="SHIELD" else GOLD, (int(it["x"]), int(it["y"])), 12)
+            pygame.draw.circle(screen, WHITE, (int(it["x"]), int(it["y"])), 12, 2)
+
+        for cp in coin_parts:
+            pygame.draw.circle(screen, GOLD, (int(cp["x"]), int(cp["y"])), 3)
+
+        for o in reversed(obs):
+            o["x"] -= speed; hit = False
+            
+            if o["t"] == "FLAPPY":
+                if o.get("red"):
+                    o["th"] += o["dir"] * o["my"]
+                    if o["th"] < 80 or o["th"] > 500 - o["g"] - 80: o["dir"] *= -1
                 
-                if it["type"] == "SHIELD":
-                    pygame.draw.circle(screen, (56, 189, 248), (int(it["x"]), int(it["y"])), 12)
-                    pygame.draw.circle(screen, WHITE, (int(it["x"]), int(it["y"])), 12, 2)
+                t_rect = pygame.Rect(int(o["x"]), 0, 50, int(o["th"]))
+                b_rect = pygame.Rect(int(o["x"]), int(o["th"]+o["g"]), 50, int(500-(o["th"]+o["g"])))
+                pipe_c = (220, 38, 38) if o.get("red") else (6, 95, 70)
+                pygame.draw.rect(screen, pipe_c, t_rect); pygame.draw.rect(screen, pipe_c, b_rect)
+                if h_rect.colliderect(t_rect) or h_rect.colliderect(b_rect): hit = True
+            else:
+                if o.get("pt"):
+                    if o.get("red"):
+                        o["y_pos"] += o["dir"] * o["my"]
+                        if o["y_pos"] < 320 or o["y_pos"] > 420: o["dir"] *= -1
+                        py = int(o["y_pos"])
+                    else: py = 500-110
+                    
+                    px = int(o["x"])
+                    body_c = (220,38,38) if o.get("red") else (126,34,206)
+                    wing_c = (248,113,113) if o.get("red") else (168,85,247)
+                    pygame.draw.ellipse(screen, body_c, (px, py, 44, 22))
+                    pygame.draw.polygon(screen, wing_c, [(px+12,py+11), (px+22,py-6), (px+32,py+11)])
+                    if h_rect.colliderect(pygame.Rect(px, py, 44, 22)): hit = True
                 else:
-                    pygame.draw.circle(screen, GOLD, (int(it["x"]), int(it["y"])), 10)
-                    pygame.draw.circle(screen, (254, 240, 138), (int(it["x"]), int(it["y"])), 10, 2)
+                    cx, cy = int(o["x"]), 500-45
+                    pygame.draw.rect(screen, (34,139,34), (cx+4, cy, 16, 45), border_radius=4) 
+                    pygame.draw.rect(screen, (34,139,34), (cx, cy+12, 8, 14), border_radius=3)
+                    pygame.draw.rect(screen, (34,139,34), (cx+16, cy+18, 8, 14), border_radius=3)
+                    if h_rect.colliderect(pygame.Rect(cx, cy, 24, 45)): hit = True
 
-        # Draw Obstacles (Fixed Cactus & Pterodactyl Graphics)
-        if state == "PLAYING":
-            for o in reversed(obstacles):
-                o["x"] -= current_speed
-                if is_ultra and o["type"] == "FLAPPY":
-                    o["topH"] += o["move_dir"] * 2.5
-                    if o["topH"] > 300 or o["topH"] < 50: o["move_dir"] *= -1
+            if hit:
+                if hp > 0: hp-=1; shield=0; obs.remove(o); play_sound(SND_BREAK); continue
+                else: 
+                    play_sound(SND_BREAK); state = "GAMEOVER"
+                    if score > high_score: high_score = score; save_hs(high_score)
+            
+            if not o["p"] and o["x"] < 50:
+                score += 1; o["p"] = True
                 
-                hit = False
-                if o["type"] == "FLAPPY":
-                    top_rect = pygame.Rect(o["x"], 0, 50, o["topH"])
-                    bot_rect = pygame.Rect(o["x"], o["topH"]+o["gap"], 50, 500 - (o["topH"]+o["gap"]))
-                    pygame.draw.rect(screen, (6, 95, 70), top_rect)
-                    pygame.draw.rect(screen, (6, 95, 70), bot_rect)
-                    hero_rect = pygame.Rect(hx-10, hy-10, hw, hh)
-                    if hero_rect.colliderect(top_rect) or hero_rect.colliderect(bot_rect): hit = True
-                else:
-                    if o.get("isPtero"):
-                        # Clean Pterodactyl graphic instead of a raw box
-                        px, py = int(o["x"]), 500 - 150
-                        pygame.draw.ellipse(screen, (126, 34, 206), (px, py, 44, 22))
-                        pygame.draw.polygon(screen, (168, 85, 247), [(px+12, py+11), (px+22, py-6), (px+32, py+11)])
-                        p_rect = pygame.Rect(px, py, 44, 22)
-                        hero_rect = pygame.Rect(hx-15, hy-15, hw, hh)
-                        if hero_rect.colliderect(p_rect): hit = True
-                    else:
-                        # Clean Cactus graphic instead of a raw box
-                        cx, cy = int(o["x"]), 500 - 52
-                        pygame.draw.rect(screen, (153, 27, 27), (cx+8, cy, 16, 52), border_radius=4)
-                        pygame.draw.rect(screen, (153, 27, 27), (cx, cy+14, 10, 8), border_radius=3)
-                        pygame.draw.rect(screen, (153, 27, 27), (cx+22, cy+22, 10, 8), border_radius=3)
-                        c_rect = pygame.Rect(cx, cy, 32, 52)
-                        hero_rect = pygame.Rect(hx-15, hy-15, hw, hh)
-                        if hero_rect.colliderect(c_rect): hit = True
+                if score > 0 and score % 3 == 0:
+                    lightning_t = 15; play_sound(SND_THUNDER)
+                    
+                if score > 0 and score % 5 == 0 and score % 15 != 0:
+                    msg = f"LEVEL {score//5 + 1} - SPEED UP!"
+                    msg_t = 90; play_sound(SND_COIN)
 
-                if hit:
-                    if shield_hp > 0:
-                        shield_hp -= 1; shield_timer = 0; obstacles.remove(o); SND_BREAK.play(); continue
-                    else:
-                        SND_BREAK.play(); state = "GAMEOVER"
-                
-                if not o["passed"] and o["x"] < 50:
-                    score += 1; o["passed"] = True
-                    if score % 15 == 0:
-                        mode = "DINO" if mode == "FLAPPY" else "FLAPPY"
-                        obstacles.clear(); items.clear()
-                        hero_y = 500 - 24 if mode == "DINO" else 200
-                        velocity = 0; SND_MODE.play()
-                
-                if o["x"] < -60: obstacles.remove(o)
+                if score > 0 and score % 15 == 0:
+                    mode = "DINO" if mode == "FLAPPY" else "FLAPPY"
+                    obs.clear(); items.clear(); hero_y = 500-25 if mode=="DINO" else 200
+                    vel = 0; msg = f"LEVEL {score//5 + 1}: {mode} MODE!"; msg_t = 120; play_sound(SND_COIN)
+            
+            if o["x"] < -60: obs.remove(o)
 
-        # Draw Hero
-        if shield_timer > 0: pygame.draw.circle(screen, (56, 189, 248), (60, int(hero_y)), 25, 3)
-        if mode == "FLAPPY": draw_bird(60, int(hero_y), math.sin(frames*0.5)*5)
-        else: draw_dino(60, int(hero_y), math.sin(frames*0.8)*4 if velocity==0 else 0)
+        if shield > 0: 
+            pulse = abs(math.sin(frames*0.1)) * 5
+            pygame.draw.circle(screen, (56,189,248), (60, int(hero_y)), int(30 + pulse), 3)
+            
+        if mode == "FLAPPY": draw_bird(60, hero_y, math.sin(frames*0.5)*6)
+        else: draw_dino(60, hero_y, math.sin(frames*0.8)*5 if vel==0 else 0)
 
-        # Draw HUD
-        score_txt = font_med.render(f"SCORE: {score}", True, WHITE)
-        coin_txt = font_med.render(f"COINS: {coins}", True, GOLD)
-        screen.blit(score_txt, (10, 10))
-        screen.blit(coin_txt, (10, 40))
-        if shield_timer > 0:
-            sh_txt = font_small.render(f"SHIELD: {shield_timer//60}s", True, (56, 189, 248))
-            screen.blit(sh_txt, (10, 70))
+        draw_text_outline(f"SCORE: {score}", font_md, WHITE, 10, 10)
+        draw_text_outline(f"COINS: {coins}", font_md, GOLD, 10, 40)
+        draw_text_outline(f"HIGH: {high_score}", font_sm, (200,200,200), 10, 70)
+        
+        pygame.draw.rect(screen, (50,50,50), (WIDTH-50, 10, 40, 30))
+        pygame.draw.rect(screen, WHITE, (WIDTH-50, 10, 40, 30), 2)
+        pygame.draw.rect(screen, WHITE, (WIDTH-38, 17, 4, 16)); pygame.draw.rect(screen, WHITE, (WIDTH-28, 17, 4, 16))
+
+        if shield > 0: draw_text_outline(f"SHIELD: {shield//60}s", font_sm, (56,189,248), 10, 95)
+        if evt != "NONE" and (frames//15)%2==0: draw_text_outline(f"WARNING: {evt}!", font_md, RED, WIDTH//2-90, 120)
+        if msg_t > 0: msg_t -= 1; draw_text_outline(msg, font_md, GOLD, WIDTH//2-140, 160)
+
+        if state == "PAUSE":
+            s = pygame.Surface((WIDTH, HEIGHT)); s.set_alpha(200); screen.blit(s, (0,0))
+            draw_text_outline("PAUSED", font_lg, WHITE, WIDTH//2-70, HEIGHT//2-100)
+            rb = pygame.Rect(WIDTH//2-100, HEIGHT//2-20, 200, 50); qb = pygame.Rect(WIDTH//2-100, HEIGHT//2+50, 200, 50)
+            pygame.draw.rect(screen, (34,197,94), rb); pygame.draw.rect(screen, (239,68,68), qb)
+            draw_text_outline("RESUME", font_md, WHITE, WIDTH//2-50, HEIGHT//2-5)
+            draw_text_outline("RESTART", font_md, WHITE, WIDTH//2-55, HEIGHT//2+65)
+            if tap and act_pos:
+                if rb.collidepoint(act_pos): state = "PLAYING"
+                elif qb.collidepoint(act_pos): reset_game(); state = "CUTSCENE"; state_t = 119
 
         if state == "GAMEOVER":
-            s = pygame.Surface((WIDTH, HEIGHT))
-            s.set_alpha(200); s.fill((0,0,0))
-            screen.blit(s, (0,0))
-            go = font_large.render("GAME OVER", True, RED)
-            sc = font_med.render(f"Final Score: {score}", True, WHITE)
-            cn = font_med.render(f"Coins: {coins}", True, GOLD)
-            res = font_small.render("TAP ANYWHERE TO REPLAY", True, (34, 197, 94))
-            
-            screen.blit(go, (WIDTH//2 - go.get_width()//2, 200))
-            screen.blit(sc, (WIDTH//2 - sc.get_width()//2, 260))
-            screen.blit(cn, (WIDTH//2 - cn.get_width()//2, 300))
-            
-            if (frames // 30) % 2 == 0:
-                screen.blit(res, (WIDTH//2 - res.get_width()//2, 400))
-                
-            if tap_detected:
-                reset_game()
-                state = "PLAYING"
+            s = pygame.Surface((WIDTH, HEIGHT)); s.set_alpha(200); screen.blit(s, (0,0))
+            draw_text_outline("GAME OVER", font_lg, RED, WIDTH//2-100, 170)
+            draw_text_outline(f"Score: {score}", font_md, WHITE, WIDTH//2-50, 230)
+            draw_text_outline(f"Coins: {coins}", font_md, GOLD, WIDTH//2-50, 270)
+            rb = pygame.Rect(WIDTH//2-100, 350, 200, 50); pygame.draw.rect(screen, (34,197,94), rb)
+            draw_text_outline("RESTART", font_md, WHITE, WIDTH//2-55, 365)
+            if tap and act_pos and rb.collidepoint(act_pos): reset_game(); state = "CUTSCENE"; state_t = 119
 
-    pygame.display.flip()
-    clock.tick(60)
+    pygame.display.flip(); clock.tick(60)
 
-pygame.quit()
+pygame.quit(); sys.exit()
+        
