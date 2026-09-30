@@ -33,6 +33,9 @@ android.minapi = 21
 # (str) Android NDK version to use
 android.ndk = 25b
 
+# (list) Application architectures
+android.archs = armeabi-v7a
+
 # (bool) Automatically accept Android SDK license
 android.accept_sdk_license = True
 
