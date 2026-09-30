@@ -15,9 +15,8 @@ source.include_exts = py,png,jpg,kv,atlas
 # (str) Application directory relative to the spec file
 source.dir = .
 
-# (list) Application requirements
-requirements = python3,pygame,sdl2_image,sdl2_mixer,sdl2_ttf
-
+# (list) Application requirements - এখানে অতিরিক্ত রেসিপি বাদ দিয়ে শুধু পাইথন এবং পাইগেম রাখা হলো
+requirements = python3,pygame
 
 # (str) Custom icon
 #icon.filename = %(source.dir)s/1000079253.png
